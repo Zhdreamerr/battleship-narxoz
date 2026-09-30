@@ -63,20 +63,30 @@ function playerShot(i){
   if(S.phase!=='battle'||S.turn!=='player'||S.cpu.shots[i])return;
   const res=shoot(S.cpu,i);
   S.last.p=name(i)+': '+word[res];S.last.c='';S.mark.p=i;
-  if(alive(S.cpu)===0){S.phase='over';S.winner='player'}
-  else S.turn='cpu';
-  fx='cpu';save();render();fx=null;schedule();
+  
+  if(alive(S.cpu)===0){
+    S.phase='over';
+    S.winner='player';
+  } else if(res==='miss'){
+    S.turn='cpu'; // Передача хода компьютеру при промахе
+  }
+  
+  fx='cpu';save();render();fx=null;
+  if(S.turn==='cpu') schedule();
 }
+
 // Компьютер знает только результаты своих выстрелов (мимо / попал / потопил), расстановку игрока не читает
 const orth=i=>{const r=Math.floor(i/N),c=i%N,o=[];
   if(r>0)o.push(i-N);if(r<N-1)o.push(i+N);if(c>0)o.push(i-1);if(c<N-1)o.push(i+1);return o};
 const group=(hits,start)=>{const set=new Set(hits),out=[start];
   for(let k=0;k<out.length;k++)for(const n of orth(out[k]))if(set.has(n)&&!out.includes(n))out.push(n);return out};
+
 function aiLearn(i,res){
   if(res==='miss')return;
   S.ai.hits.push(i);
   if(res==='sunk'){const dead=group(S.ai.hits,i);S.ai.hits=S.ai.hits.filter(x=>!dead.includes(x))}
 }
+
 function aiPick(){
   const free=[];S.me.shots.forEach((v,i)=>{if(!v)free.push(i)});
   const pick=a=>a[rnd(a.length)],row=i=>Math.floor(i/N);
@@ -89,6 +99,7 @@ function aiPick(){
   if(S.level==='hard'){const p=free.filter(i=>(row(i)+i%N)%2===0);if(p.length)return pick(p)}  // поиск «шахматкой»
   return pick(free);
 }
+
 function cpuMove(){
   timer=null;
   if(S.phase!=='battle'||S.turn!=='cpu')return;
@@ -96,10 +107,18 @@ function cpuMove(){
   const res=shoot(S.me,i);
   aiLearn(i,res);
   S.last.c=name(i)+': '+word[res];S.mark.c=i;
-  if(alive(S.me)===0){S.phase='over';S.winner='cpu'}
-  else S.turn='player';
+  
+  if(alive(S.me)===0){
+    S.phase='over';
+    S.winner='cpu';
+  } else if(res==='miss'){
+    S.turn='player'; // Передача хода игроку при промахе
+  }
+  
   fx='me';save();render();fx=null;
+  if(S.phase==='battle'&&S.turn==='cpu') schedule(); // Бот стреляет еще раз
 }
+
 function schedule(){
   if(S.phase==='battle'&&S.turn==='cpu'&&!timer)timer=setTimeout(cpuMove,550);
 }

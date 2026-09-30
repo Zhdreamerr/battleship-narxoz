@@ -220,7 +220,7 @@ async function refreshProfile(){
   renderProfile();
 }
 onAuthStateChanged(auth,async u=>{
-  user=u;P=null;renderProfile();
+  user=u;P=null;renderProfile();netAuth(u);
   if(!u)return;
   try{   // первый вход — создаём документ users/{uid}
     const r=uref(u);
@@ -307,6 +307,7 @@ function go(v){
   if(v==='game')$('term').scrollTop=$('term').scrollHeight;
   if(v==='profile'||v==='home')renderProfile();
   if(v==='profile')refreshProfile();
+  if(v==='home')loadLobby();else stopLobby();
   if(v==='rating')loadRating();
   if(v==='pro')renderPro();
   if(location.hash!=='#'+v)location.hash=v;
@@ -380,7 +381,8 @@ document.addEventListener('keydown',e=>{
 // Локальная игра не затрагивается: на время онлайн-режима S подменяется, LS хранит локальную партию.
 const RID=new URLSearchParams(location.search).get('room'),RID_RE=/^room_[a-z0-9]{3,12}$/i,NKEY='battleship_net_v1';
 let LS=null,unsub=null,rdb=null;
-const room=id=>{rdb=rdb||getDatabase(app);return ref(rdb,'rooms/'+id)};
+const R=()=>rdb||(rdb=getDatabase(app));
+const room=id=>ref(R(),'rooms/'+id);
 const other=r=>r==='player1'?'player2':'player1';
 const roomLink=id=>location.origin+location.pathname+'?room='+id;
 const rtok=()=>Math.random().toString(36).slice(2);
@@ -406,6 +408,7 @@ function quitNet(msg){
   netMsg(msg,1);go('home');render();schedule();
 }
 async function createRoom(){
+  if(!user){netMsg('Для сетевой игры войдите через Google',true);return}
   if(S.net)leaveRoom();
   const id='room_'+Math.random().toString(36).slice(2,8),tok=rtok(),link=roomLink(id);
   const cp=navigator.clipboard?navigator.clipboard.writeText(link).then(()=>1,()=>0):Promise.resolve(0);
@@ -416,7 +419,9 @@ async function createRoom(){
   listen(netState(id,'player1',tok));
 }
 function joinRoom(id){
-  if(!RID_RE.test(id))return netMsg('Неверная ссылка на комнату.',1);
+  if(!user){netMsg('Для сетевой игры войдите через Google',true);return}
+  if(!RID_RE.test(id))return netMsg('Неверный ID комнаты.',true);
+  if(S.net){if(S.net.id===id)return go('game');leaveRoom()}
   try{
     let sv=null;try{sv=JSON.parse(sessionStorage.getItem(NKEY))}catch(e){}
     if(sv&&sv.net&&sv.net.id===id&&sv.me&&sv.cpu)return listen(sv);   // перезагрузка страницы — возвращаемся в свою комнату
@@ -424,7 +429,7 @@ function joinRoom(id){
     onValue(room(id),snap=>{
       const d=snap.val();
       if(!d)return quitNet('Комната не найдена или уже закрыта.');
-      if(d.p2)return quitNet('В комнате уже есть второй игрок.');
+      if(d.p2||d.status!=='waiting')return quitNet('Комната недоступна: уже занята или игра идёт.');
       update(room(id),{p2:{name:myName(),tok},status:'setup'}).catch(console.error);
       listen(netState(id,'player2',tok));
     },{onlyOnce:true});
@@ -437,21 +442,40 @@ function leaveRoom(){
   quitNet('');
 }
 
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function send(n,obj){   // запись с повторами: ход не теряется при сетевом сбое
+  for(let k=0;k<3;k++){
+    try{await update(room(n.id),obj);return true}catch(e){console.error(e);await sleep(400*(k+1))}
+  }
+  return false;
+}
+// RTDB вызывает слушатель повторно прямо внутри update() — такие снимки ставим в очередь и обрабатываем по порядку,
+// иначе устаревший снимок перезаписывал новый ход («зависание» на «Ход соперника»)
+let busy=false,queued=null;
 function onRoom(d){
+  if(busy){queued={d};return}
+  busy=true;
+  try{let cur={d};while(cur){syncRoom(cur.d);cur=queued;queued=null}}
+  catch(e){console.error(e)}
+  finally{busy=false}
+}
+function syncRoom(d){
   const n=S.net;if(!n)return;
   if(!d){if(S.phase!=='over')quitNet('Комната закрыта.');return}
-  const me=n.role,op=other(me),o=d[me==='player1'?'p2':'p1'];
+  const me=n.role,op=other(me),o=d[me==='player1'?'p2':'p1'],sh=d.shot,rs=d.res;
   if(me==='player2'&&d.p2&&d.p2.tok!==n.tok)return quitNet('В комнате уже есть второй игрок.');
   n.opp=o?o.name:'';
+  let turn=d.turn;   // актуальный ход: учитываем и то, что я сам только что записал
   if(d.status==='battle'&&(S.phase==='setup'||S.phase==='wait')){   // оба готовы — бой
     S.phase='battle';S.g={shots:0,hits:0};S.log=[];S.last={p:'',c:''};S.mark={p:-1,c:-1};
     log('s','Сессия начата. Соперник: '+n.opp);SoundManager.startBg();
   }
-  if(d.shot&&d.shot.by===op&&d.status==='battle'&&n.def!==d.shot.n&&(!d.res||d.res.n!==d.shot.n)){n.def=d.shot.n;defend(d.shot)}
-  if(d.res&&d.res.by===me&&d.res.n>n.applied)applyRes(d.res);
-  if(me==='player1'&&d.status==='setup'&&d.ready&&d.ready.player1&&d.ready.player2)
-    update(room(n.id),{status:'battle',turn:Math.random()<.5?'player1':'player2'}).catch(console.error);
-  if(S.phase==='battle')S.turn=d.turn===me&&!n.pend?'player':'opp';
+  if(sh&&sh.by===op&&d.status==='battle'&&n.def!==sh.n&&(!rs||rs.n!==sh.n)){n.def=sh.n;turn=defend(sh)||turn}   // выстрел по мне
+  if(rs&&rs.by===me&&rs.n>n.applied)applyRes(rs);                                                               // результат моего выстрела
+  if(sh&&rs&&rs.n===sh.n&&rs.by===op&&rs.r==='miss'&&d.status==='battle'&&turn!==me){turn=me;send(n,{turn:me})} // самолечение: промах обработан, а ход не передан
+  if(me==='player1'&&d.status==='setup'&&d.ready&&d.ready.player1&&d.ready.player2)send(n,{status:'battle',turn:Math.random()<.5?'player1':'player2'});
+  n.pend=!!(sh&&sh.by===me&&(!rs||rs.n!==sh.n));   // «жду результат» вычисляется из базы, поэтому сбрасывается у обоих игроков
+  if(S.phase==='battle')S.turn=turn===me&&!n.pend?'player':'opp';
   if(d.status==='over'&&S.phase!=='over'){
     S.phase='over';S.winner=d.winner===me?'player':'opp';
     if(d.left&&S.winner==='player')log('s','Соперник покинул комнату');
@@ -459,15 +483,16 @@ function onRoom(d){
   }
   save();render();fx=null;
 }
-// Соперник выстрелил по мне: считаем результат, пишем res; ход переходит ко мне только при промахе
+// Соперник выстрелил по мне: считаем результат, пишем res. Ход переходит ко мне ТОЛЬКО при промахе (res и turn — одной атомарной записью)
 function defend(sh){
-  const n=S.net,i=sh.i,r=shoot(S.me,i),ship=r==='sunk'?shipOf(S.me,i):null;
+  const n=S.net,i=sh.i,r=shoot(S.me,i),ship=r==='sunk'?shipOf(S.me,i):null,out={res:{n:sh.n,by:sh.by,i,r,cells:ship?ship.cells:null}};
+  let next;
   S.mark.c=i;S.last.c=name(i)+': '+word[r];S.last.p='';
   log('c','< '+name(i)+' … '+LOGW[r],r);SoundManager.shot(r);fx='me';
-  const out={res:{n:sh.n,by:sh.by,i,r,cells:ship?ship.cells:null}};
   if(alive(S.me)===0){out.status='over';out.winner=sh.by;S.phase='over';S.winner='opp';finish('cpu')}
-  else if(r==='miss')out.turn=n.role;
-  update(room(n.id),out).catch(console.error);
+  else if(r==='miss')out.turn=next=n.role;
+  send(n,out).then(ok=>{if(!ok){n.def=0;log('s','Сеть: не удалось отправить результат выстрела','hit');render()}});
+  return next;
 }
 // Результат моего выстрела: отражаем его на поле соперника
 function applyRes(x){
@@ -482,8 +507,38 @@ function netShot(i){
   const n=S.net;
   if(S.phase!=='battle'||S.turn!=='player'||n.pend||S.cpu.shots[i])return;
   n.pend=true;S.turn='opp';save();render();
-  update(room(n.id),{shot:{by:n.role,i,n:Date.now()}}).catch(e=>{console.error(e);n.pend=false;S.turn='player';render()});
+  send(n,{shot:{by:n.role,i,n:Date.now()}}).then(ok=>{if(!ok&&S.net===n){n.pend=false;S.turn='player';render()}});
 }
+
+// ================= Лобби и авторизация =================
+let lobbyOff=null,pendingRoom=RID;
+function stopLobby(){if(lobbyOff){lobbyOff();lobbyOff=null}}
+function loadLobby(){
+  stopLobby();
+  const box=$('lobby'),msg=(c,t)=>{box.innerHTML='<div class="'+c+' mono">'+t+'</div>'};
+  if(!user)return msg('dim','Войдите через Google, чтобы видеть свободные серверы.');
+  msg('dim','Загрузка…');
+  try{
+    lobbyOff=onValue(ref(R(),'rooms'),snap=>{
+      const now=Date.now(),rows=Object.entries(snap.val()||{})
+        .filter(([id,d])=>RID_RE.test(id)&&d&&d.status==='waiting'&&d.p1&&!d.p2&&now-(d.created||0)<30*60000)   // брошенные комнаты старше 30 мин скрываем
+        .sort((a,b)=>b[1].created-a[1].created);
+      box.innerHTML=rows.length?rows.map(([id,d])=>'<div class="lrow"><span>'+esc(d.p1.name||'Игрок')+'</span><code>'+esc(id)+'</code><button class="btn" data-join="'+esc(id)+'">Присоединиться</button></div>').join(''):
+        '<div class="dim mono">Свободных серверов нет — создайте свой.</div>';
+    },e=>msg('err','Не удалось загрузить список: '+esc(e.code||e.message)));
+  }catch(e){msg('err','Ошибка лобби: '+esc(e.message))}
+}
+function netAuth(u){   // вызывается при каждой смене авторизации
+  if(!u&&S.net)leaveRoom();
+  if(pendingRoom&&!S.net){   // пришли по ссылке ?room=… — ждём, пока Firebase определит пользователя
+    if(u){const id=pendingRoom;pendingRoom=null;joinRoom(id)}
+    else{go('home');netMsg('Для сетевой игры войдите через Google',true)}
+  }
+  if(!$('v-home').hidden)loadLobby();
+}
+$('bJoin').onclick=()=>{const v=$('roomId').value,m=v.match(/room_[a-z0-9]{3,12}/i);joinRoom(m?m[0]:v.trim())};
+$('lobby').addEventListener('click',e=>{const b=e.target.closest('[data-join]');if(b)joinRoom(b.dataset.join)});
+
 function netUI(){
   const n=S.net,ph=S.phase,prep=ph==='setup'||ph==='wait',sunk=S.cpu.ships.filter(s=>isSunk(S.cpu,s)).length;
   let st;
@@ -543,4 +598,3 @@ document.addEventListener('pointerdown',()=>{if(S.phase==='battle'&&!SoundManage
 
 render();schedule();   // после перезагрузки страницы партия и ход компьютера продолжаются
 go(location.hash.slice(1));   // открыть вкладку из адресной строки
-if(RID)joinRoom(RID);   // ссылка ?room=… — подключаемся как player2

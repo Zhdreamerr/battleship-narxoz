@@ -12,7 +12,7 @@
 <header class="nav">
   <div class="brand">root@battleship<span class="cur">_</span></div>
   <nav id="nav">
-    <button data-v="home">Главная</button><button data-v="game">Атака</button><button data-v="profile">Профиль</button><button data-v="pro" class="pro">ROOT ДОСТУП</button>
+    <button data-v="home">Главная</button><button data-v="game">Атака</button><button data-v="profile">Профиль</button><button data-v="rating">Рейтинг</button><button data-v="pro" class="pro">ROOT ДОСТУП</button>
   </nav>
   <button class="snd" id="bSnd" aria-pressed="true">Звук: вкл</button>
 </header>
@@ -21,6 +21,7 @@
     <p class="mono dim">$ ssh <span id="hName">operator</span>@soc-terminal — соединение установлено</p>
     <h1>Центр управления атакой</h1>
     <p class="lead">Ваш флот — это сеть, флот противника — цель сканирования. Выберите режим.</p>
+    <div class="auth"><img class="ava" id="authAva" alt="" referrerpolicy="no-referrer" hidden><b id="authName">Гость</b><button class="btn" id="bLogin">Войти через Google</button><span id="authMsg" class="mono err"></span></div>
     <div class="cards">
       <article class="card"><h3>Локальный взлом</h3><p>Игра против бота: три уровня защиты, статистика и лог атак в реальном времени.</p><button class="btn" data-go="game">Начать атаку →</button></article>
       <article class="card off"><h3>Тренер уязвимостей</h3><p>Разбор ошибок и тактические подсказки.</p><span class="tag">СКОРО</span></article>
@@ -44,19 +45,28 @@
       <button class="btn" id="bGo">Начать атаку</button>
       <button class="btn" id="bNew">Новая игра</button>
     </div>
-    <div id="over"><p id="overTxt"></p><button class="btn" id="bNew2">Новая игра</button></div>
+    <div id="over"><p id="overTxt"></p><button class="btn" id="bRep">Отчет тренера</button> <button class="btn" id="bNew2">Новая игра</button></div>
     <div id="term" aria-live="polite"></div>
   </section>
 
   <section class="view" id="v-profile" hidden>
     <h1>Профиль</h1>
-    <p class="lead">Статистика хранится в вашем браузере (LocalStorage).</p>
+    <p class="lead" id="pLead"></p>
+    <div class="who"><img class="ava" id="pAva" alt="" referrerpolicy="no-referrer" hidden><b id="pName">Гость</b></div>
     <div class="stats">
       <div class="stat wide"><label for="callsign">Позывной</label><div class="row"><input id="callsign" maxlength="16" autocomplete="off" placeholder="operator"><button class="btn" id="bName">Сохранить</button></div></div>
       <div class="stat"><span>Всего атак</span><b id="sGames">0</b></div>
+      <div class="stat"><span>Победы</span><b id="sWon">0</b></div>
+      <div class="stat"><span>Поражения</span><b id="sLost">0</b></div>
       <div class="stat"><span>Винрейт</span><b id="sWin">—</b></div>
       <div class="stat"><span>Точность</span><b id="sAcc">—</b></div>
     </div>
+  </section>
+
+  <section class="view" id="v-rating" hidden>
+    <h1>Глобальный рейтинг</h1>
+    <p class="lead">Топ-10 операторов по количеству побед.</p>
+    <div class="tbl"><table class="rt"><thead><tr><th>#</th><th>Игрок</th><th>Победы</th><th>Пораж.</th><th>Точность</th></tr></thead><tbody id="rBody"></tbody></table></div>
   </section>
 
   <section class="view" id="v-pro" hidden>
@@ -80,6 +90,7 @@
     </div>
   </section>
 </main>
-<script src="script.js"></script>
+<div class="modal" id="coach" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle"><div class="mbox"><h3 id="cTitle">Отчет тренера</h3><p id="cRes" class="mono"></p><div class="acc"><b id="cAcc">0%</b><span id="cSub"></span></div><p id="cTip"></p><p id="cSave" class="mono dim"></p><button class="btn" id="bCoachX">Закрыть</button></div></div>
+<script type="module" src="script.js"></script>
 </body>
 </html>

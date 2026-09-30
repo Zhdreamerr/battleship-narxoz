@@ -119,3 +119,14 @@ input:focus{outline:none;border-color:var(--g)}
 #netMsg:empty{display:none}
 #netMsg.ok{color:var(--g)}#netMsg.err{color:var(--r)}
 #status{overflow-wrap:anywhere}
+/* лобби */
+.card.net{grid-column:1/-1}
+.card.net>*{align-self:stretch}
+.lobbybar{display:flex;flex-wrap:wrap;gap:10px}
+.lobbybar input{min-width:180px}
+.card.net h4{margin:18px 0 0;font:500 13px var(--mono);color:var(--dim)}
+#lobby{margin-top:8px}
+.lrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--grid2);background:var(--bg);padding:8px 12px;margin-top:8px}
+.lrow span{flex:1;min-width:0;font-family:var(--mono);color:var(--g);overflow-wrap:anywhere}
+.lrow code{font:12px var(--mono);color:var(--dim)}
+.lrow .btn{padding:6px 12px}

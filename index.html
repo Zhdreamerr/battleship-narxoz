@@ -3,25 +3,82 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Морской бой</title>
+<title>BATTLESHIP // SOC Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<header class="nav">
+  <div class="brand">root@battleship<span class="cur">_</span></div>
+  <nav id="nav">
+    <button data-v="home">Главная</button><button data-v="game">Атака</button><button data-v="profile">Профиль</button><button data-v="pro" class="pro">ROOT ДОСТУП</button>
+  </nav>
+  <button class="snd" id="bSnd" aria-pressed="true">Звук: вкл</button>
+</header>
 <main>
-  <h1>Морской бой</h1>
-  <p id="status"></p>
-  <div class="lvl" id="lvl"><span>Сложность компьютера</span><button class="btn" data-l="easy">Лёгкий</button><button class="btn" data-l="medium">Средний</button><button class="btn" data-l="hard">Сложный</button></div>
-  <div class="boards">
-    <section><h2>Мой флот</h2><div id="me"></div><div class="count" id="cme"></div></section>
-    <section><h2>Флот противника</h2><div id="cpu"></div><div class="count" id="ccpu"></div></section>
-  </div>
-  <div class="bar" id="bar">
-    <button class="btn" id="bMe">Автоматическая расстановка: мой флот</button>
-    <button class="btn" id="bCpu">Автоматическая расстановка: флот компьютера</button>
-    <button class="btn" id="bGo">Начать бой</button>
-    <button class="btn" id="bNew">Новая игра</button>
-  </div>
-  <div id="over"><p id="overTxt"></p><button class="btn" id="bNew2">Новая игра</button></div>
+  <section class="view" id="v-home">
+    <p class="mono dim">$ ssh <span id="hName">operator</span>@soc-terminal — соединение установлено</p>
+    <h1>Центр управления атакой</h1>
+    <p class="lead">Ваш флот — это сеть, флот противника — цель сканирования. Выберите режим.</p>
+    <div class="cards">
+      <article class="card"><h3>Локальный взлом</h3><p>Игра против бота: три уровня защиты, статистика и лог атак в реальном времени.</p><button class="btn" data-go="game">Начать атаку →</button></article>
+      <article class="card off"><h3>Тренер уязвимостей</h3><p>Разбор ошибок и тактические подсказки.</p><span class="tag">СКОРО</span></article>
+      <article class="card off"><h3>Сетевая атака</h3><p class="mono">Ожидание соединения с сервером...</p><span class="tag">OFFLINE</span></article>
+    </div>
+  </section>
+
+  <section class="view" id="v-game" hidden>
+    <p id="status"></p>
+    <div class="lvl" id="lvl"><span>Защита цели</span>
+      <button class="btn" data-l="easy">Script Kiddie · Лёгкий</button><button class="btn" data-l="medium">SysAdmin · Средний</button><button class="btn" data-l="hard">Hacker · Сложный</button>
+    </div>
+    <div class="dock" id="dock"></div>
+    <div class="boards">
+      <section><h2>Моя сеть</h2><div id="me"></div><div class="count" id="cme"></div></section>
+      <section><h2>Сканер цели</h2><div id="cpu"></div><div class="count" id="ccpu"></div></section>
+    </div>
+    <div class="bar" id="bar">
+      <button class="btn" id="bMe">Авторасстановка: моя сеть</button>
+      <button class="btn" id="bCpu">Авторасстановка: цель</button>
+      <button class="btn" id="bGo">Начать атаку</button>
+      <button class="btn" id="bNew">Новая игра</button>
+    </div>
+    <div id="over"><p id="overTxt"></p><button class="btn" id="bNew2">Новая игра</button></div>
+    <div id="term" aria-live="polite"></div>
+  </section>
+
+  <section class="view" id="v-profile" hidden>
+    <h1>Профиль</h1>
+    <p class="lead">Статистика хранится в вашем браузере (LocalStorage).</p>
+    <div class="stats">
+      <div class="stat wide"><label for="callsign">Позывной</label><div class="row"><input id="callsign" maxlength="16" autocomplete="off" placeholder="operator"><button class="btn" id="bName">Сохранить</button></div></div>
+      <div class="stat"><span>Всего атак</span><b id="sGames">0</b></div>
+      <div class="stat"><span>Винрейт</span><b id="sWin">—</b></div>
+      <div class="stat"><span>Точность</span><b id="sAcc">—</b></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-pro" hidden>
+    <h1>ROOT ДОСТУП (PRO-режим)</h1>
+    <p class="lead">Расширенные инструменты для оператора.</p>
+    <div class="cards">
+      <article class="card"><h3>Скрытие IP</h3><p>Анонимный профиль: ваш позывной не попадает в рейтинги.</p></article>
+      <article class="card"><h3>Аналитика логов</h3><p>Разбор каждой партии: слабые места и карта промахов.</p></article>
+      <article class="card"><h3>Кастомные радары</h3><p>Темы сканера и эффекты попаданий.</p></article>
+    </div>
+    <div class="pay">
+      <div class="test">ТЕСТОВЫЙ РЕЖИМ — деньги не списываются</div>
+      <h3>Подписка ROOT <span class="price">990 ₸/мес</span></h3>
+      <div class="fields">
+        <input id="cn" inputmode="numeric" maxlength="19" autocomplete="off" placeholder="0000 0000 0000 0000" aria-label="Номер карты">
+        <input id="cx" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="MM/YY" aria-label="Срок действия">
+        <input id="cc" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="CVC" aria-label="CVC">
+      </div>
+      <button class="btn solid" id="bPay">Оформить подписку</button>
+      <p id="payMsg" class="mono"></p>
+    </div>
+  </section>
 </main>
 <script src="script.js"></script>
 </body>

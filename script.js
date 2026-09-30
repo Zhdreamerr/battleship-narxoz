@@ -1,8 +1,11 @@
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
+import {getFirestore,doc,getDoc,setDoc,increment,collection,query,orderBy,limit,getDocs} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 const N=10,SIZES=[4,3,3,2,2,2,1,1,1,1],KEY='battleship_v1',L='АБВГДЕЖЗИК';
 const $=id=>document.getElementById(id);
 const rnd=n=>Math.floor(Math.random()*n);
 const newBoard=()=>({ships:[],shots:Array(100).fill(0)});
-const fresh=(level='medium')=>({phase:'setup',turn:'player',level,ai:{hits:[]},mark:{p:-1,c:-1},log:[],pl:{size:4,h:true},me:newBoard(),cpu:newBoard(),last:{p:'',c:''},winner:null});
+const fresh=(level='medium')=>({phase:'setup',turn:'player',level,ai:{hits:[]},mark:{p:-1,c:-1},log:[],pl:{size:4,h:true},me:newBoard(),cpu:newBoard(),last:{p:'',c:''},winner:null,g:{shots:0,hits:0}});
 let S=load()||fresh(),timer=null,fx=null;
 
 function validBoard(b){
@@ -17,6 +20,7 @@ function load(){
       s.level=['easy','medium','hard'].includes(s.level)?s.level:'medium';
       s.ai=s.ai&&Array.isArray(s.ai.hits)?s.ai:{hits:[]};s.mark=s.mark||{p:-1,c:-1};s.log=Array.isArray(s.log)?s.log:[];
       s.pl=s.pl&&[1,2,3,4].includes(s.pl.size)?s.pl:{size:4,h:true};
+      s.g=s.g&&Number.isInteger(s.g.shots)&&Number.isInteger(s.g.hits)?s.g:{shots:0,hits:0};
       return s;
     }
   }catch(e){}
@@ -171,34 +175,125 @@ $('cpu').addEventListener('click',e=>{const b=e.target.closest('[data-i]');if(b)
 $('lvl').addEventListener('click',e=>{const b=e.target.closest('[data-l]');if(b&&S.phase==='setup'){S.level=b.dataset.l;save();render()}});
 $('bMe').onclick=()=>{S.me=newBoard();S.me.ships=autoPlace();save();render()};
 $('bCpu').onclick=()=>{S.cpu=newBoard();S.cpu.ships=autoPlace();save();render()};
-$('bGo').onclick=()=>{S.phase='battle';S.turn='player';S.last={p:'',c:''};S.ai={hits:[]};S.mark={p:-1,c:-1};S.log=[];log('s','Сессия начата. Защита цели: '+LVN[S.level]);SoundManager.startBg();save();render()};
+$('bGo').onclick=()=>{S.phase='battle';S.turn='player';S.g={shots:0,hits:0};S.last={p:'',c:''};S.ai={hits:[]};S.mark={p:-1,c:-1};S.log=[];log('s','Сессия начата. Защита цели: '+LVN[S.level]);SoundManager.startBg();save();render()};
 const reset=()=>{clearTimeout(timer);timer=null;SoundManager.stopBg();S=fresh(S.level);save();render()};
 $('bNew').onclick=reset;$('bNew2').onclick=reset;
 
 // ================= SPA, профиль, PRO (обёртка над движком) =================
 const LOGW={miss:'TIMEOUT',hit:'CRITICAL ERROR',sunk:'NODE COMPROMISED'};
 const LVN={easy:'Script Kiddie',medium:'SysAdmin',hard:'Hacker'};
-const SKEY='battleship_profile_v1',VIEWS=['home','game','profile','pro'];
+const SKEY='battleship_profile_v1',VIEWS=['home','game','profile','rating','pro'];
 function loadStats(){
-  const d={name:'',games:0,wins:0,shots:0,hits:0,pro:false};
+  const d={pro:false};
   try{const s=JSON.parse(localStorage.getItem(SKEY));if(s&&typeof s==='object')return Object.assign(d,s)}catch(e){}
   return d;
 }
-let ST=loadStats();
+let ST=loadStats();   // в LocalStorage остался только флаг PRO-демо
 const saveStats=()=>{try{localStorage.setItem(SKEY,JSON.stringify(ST))}catch(e){}};
 const hhmm=()=>new Date().toLocaleTimeString('ru-RU',{hour12:false});
 function log(w,m,c){S.log.push({t:hhmm(),w,m,c:c||''});if(S.log.length>80)S.log.shift()}
-function stat(res){ST.shots++;if(res!=='miss')ST.hits++;saveStats()}
+function stat(res){S.g.shots++;if(res!=='miss')S.g.hits++}   // счётчик выстрелов текущей партии (хранится в S)
+
+// ================= Firebase: Auth + Firestore =================
+const app=initializeApp({
+  apiKey:"AIzaSyAdAsf9CX_DBtzHpikfA4h-_Ri-Bw35XDE",
+  authDomain:"narxoz-battleship.firebaseapp.com",
+  projectId:"narxoz-battleship",
+  storageBucket:"narxoz-battleship.firebasestorage.app",
+  messagingSenderId:"228640698225",
+  appId:"1:228640698225:web:0912fd6cdcac69857b10d0"
+});
+const auth=getAuth(app),db=getFirestore(app);
+let user=null,P=null,saveMsg='';
+const uref=u=>doc(db,'users',u.uid);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const myName=()=>user?((P&&P.displayName)||user.displayName||'Игрок'):'Гость';
+
+async function refreshProfile(){
+  if(!user)return;
+  try{const s=await getDoc(uref(user));P=s.exists()?s.data():null}catch(e){console.error(e)}
+  renderProfile();
+}
+onAuthStateChanged(auth,async u=>{
+  user=u;P=null;renderProfile();
+  if(!u)return;
+  try{   // первый вход — создаём документ users/{uid}
+    const r=uref(u);
+    if(!(await getDoc(r)).exists())await setDoc(r,{displayName:(u.displayName||'Игрок').slice(0,16),wins:0,losses:0,totalShots:0,hits:0});
+  }catch(e){console.error(e)}
+  refreshProfile();
+});
+$('bLogin').onclick=async()=>{
+  $('authMsg').textContent='';
+  if(user)return signOut(auth);
+  try{await signInWithPopup(auth,new GoogleAuthProvider())}
+  catch(e){if(!/popup-closed|cancelled-popup/.test(e.code))$('authMsg').textContent='Ошибка входа: '+(e.code||e.message)}
+};
+async function saveResult(u,win,g){
+  try{
+    await setDoc(uref(u),{wins:increment(win?1:0),losses:increment(win?0:1),totalShots:increment(g.shots),hits:increment(g.hits)},{merge:true});
+    saveMsg='Статистика сохранена в облаке ✓';refreshProfile();
+  }catch(e){console.error(e);saveMsg='Не удалось сохранить статистику: '+(e.code||'ошибка')}
+  $('cSave').textContent=saveMsg;
+}
+async function loadRating(){
+  const t=$('rBody'),row=(c,m)=>'<tr><td colspan="5" class="'+c+'">'+m+'</td></tr>';
+  t.innerHTML=row('dim','Загрузка…');
+  try{
+    const q=await getDocs(query(collection(db,'users'),orderBy('wins','desc'),limit(10)));
+    if(q.empty){t.innerHTML=row('dim','Пока нет игроков.');return}
+    t.innerHTML=q.docs.map((d,i)=>{
+      const x=d.data(),n=x.totalShots||0;
+      return '<tr'+(user&&d.id===user.uid?' class="mine"':'')+'><td>'+(i+1)+'</td><td>'+esc(x.displayName||'Аноним')+'</td><td>'+(x.wins||0)+'</td><td>'+(x.losses||0)+'</td><td>'+(n?Math.round((x.hits||0)/n*100)+'%':'—')+'</td></tr>';
+    }).join('');
+  }catch(e){console.error(e);t.innerHTML=row('err','Не удалось загрузить рейтинг ('+esc(e.code||'error')+')')}
+}
+
+// ================= Конец партии + отчёт тренера =================
 function finish(w){
-  ST.games++;if(w==='player')ST.wins++;saveStats();SoundManager.stopBg();
+  SoundManager.stopBg();
   log('s',w==='player'?'ACCESS GRANTED — цель скомпрометирована':'ACCESS DENIED — ваша сеть уничтожена',w==='player'?'':'hit');
+  saveMsg=user?'Сохранение статистики…':'Вы играли как Гость — статистика не сохранена. Войдите через Google на главной.';
+  if(user)saveResult(user,w==='player',S.g);
+  setTimeout(()=>{if(S.phase==='over')showCoach(w)},600);   // даём увидеть последний выстрел
 }
+function showCoach(w){
+  const g=S.g,a=g.shots?Math.round(g.hits/g.shots*100):0;
+  $('cRes').textContent=w==='player'?'ACCESS GRANTED — победа':'ACCESS DENIED — поражение';
+  $('cAcc').textContent=a+'%';
+  $('cSub').textContent='Точность в партии: попаданий '+g.hits+' из '+g.shots+' выстрелов';
+  $('cTip').textContent=a<25?"Совет тренера: Вы слишком часто бьете наугад. Старайтесь простреливать поле 'шахматкой'.":
+    a<40?'Неплохо! Подбили корабль — добивайте его по линии, так вы не теряете ходы на промахи.':
+    'Отличная работа! Адмирал гордится вашим анализом.';
+  $('cSave').textContent=saveMsg;
+  $('coach').hidden=false;$('bCoachX').focus();
+}
+const closeCoach=()=>{$('coach').hidden=true};
+$('bCoachX').onclick=closeCoach;
+$('coach').addEventListener('click',e=>{if(e.target===$('coach'))closeCoach()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCoach()});
+$('bRep').onclick=()=>showCoach(S.winner);
+
+// ================= Профиль =================
 function renderProfile(){
-  $('callsign').value=ST.name;$('hName').textContent=ST.name||'operator';
-  $('sGames').textContent=ST.games;
-  $('sWin').textContent=ST.games?Math.round(ST.wins/ST.games*100)+'%':'—';
-  $('sAcc').textContent=ST.shots?Math.round(ST.hits/ST.shots*100)+'%':'—';
+  const n=myName(),w=P&&P.wins||0,l=P&&P.losses||0,s=P&&P.totalShots||0,h=P&&P.hits||0;
+  $('hName').textContent=user?n:'operator';
+  $('authName').textContent=$('pName').textContent=n;
+  ['authAva','pAva'].forEach(id=>{const a=$(id),ok=!!(user&&user.photoURL);a.hidden=!ok;if(ok)a.src=user.photoURL});
+  $('bLogin').textContent=user?'Выйти':'Войти через Google';
+  $('pLead').textContent=user?'Статистика синхронизируется с облаком (Firestore).':'Вы играете как Гость — статистика не сохраняется. Войдите через Google на главной.';
+  $('callsign').value=user?n:'';$('callsign').disabled=$('bName').disabled=!user;
+  $('sGames').textContent=w+l;$('sWon').textContent=w;$('sLost').textContent=l;
+  $('sWin').textContent=w+l?Math.round(w/(w+l)*100)+'%':'—';
+  $('sAcc').textContent=s?Math.round(h/s*100)+'%':'—';
 }
+$('bName').onclick=async()=>{
+  const n=$('callsign').value.trim().slice(0,16),b=$('bName');
+  if(!user||!n)return;
+  try{await setDoc(uref(user),{displayName:n},{merge:true});await refreshProfile();b.textContent='Сохранено ✓'}
+  catch(e){console.error(e);b.textContent='Ошибка'}
+  setTimeout(()=>b.textContent='Сохранить',1200);
+};
 function renderPro(){if(ST.pro){$('payMsg').className='mono ok';$('payMsg').textContent='Статус: ROOT активен (тестовый режим).'}}
 function go(v){
   if(!VIEWS.includes(v))v='home';
@@ -206,6 +301,8 @@ function go(v){
   document.querySelectorAll('#nav [data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   if(v==='game')$('term').scrollTop=$('term').scrollHeight;
   if(v==='profile'||v==='home')renderProfile();
+  if(v==='profile')refreshProfile();
+  if(v==='rating')loadRating();
   if(v==='pro')renderPro();
   if(location.hash!=='#'+v)location.hash=v;
   window.scrollTo(0,0);
@@ -213,10 +310,6 @@ function go(v){
 $('nav').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(b)go(b.dataset.v)});
 document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g)go(g.dataset.go)});
 window.addEventListener('hashchange',()=>go(location.hash.slice(1)));
-$('bName').onclick=()=>{
-  ST.name=$('callsign').value.trim().slice(0,16);saveStats();renderProfile();
-  $('bName').textContent='Сохранено ✓';setTimeout(()=>$('bName').textContent='Сохранить',1200);
-};
 // Оплата — демо: данные карты нигде не сохраняются и не отправляются
 $('cn').oninput=e=>{e.target.value=e.target.value.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim()};
 $('cx').oninput=e=>{let v=e.target.value.replace(/\D/g,'').slice(0,4);if(v.length>2)v=v.slice(0,2)+'/'+v.slice(2);e.target.value=v};

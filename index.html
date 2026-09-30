@@ -25,7 +25,10 @@
     <div class="cards">
       <article class="card"><h3>Локальный взлом</h3><p>Игра против бота: три уровня защиты, статистика и лог атак в реальном времени.</p><button class="btn" data-go="game">Начать атаку →</button></article>
       <article class="card off"><h3>Тренер уязвимостей</h3><p>Разбор ошибок и тактические подсказки.</p><span class="tag">СКОРО</span></article>
-      <article class="card"><h3>Сетевая атака</h3><p>Дуэль 1 на 1 по ссылке: создайте сервер и отправьте ссылку сопернику.</p><button class="btn" id="bRoom">Создать сервер</button><p id="netMsg" class="mono"></p></article>
+      <article class="card net"><h3>Сетевая атака</h3><p>Дуэль 1 на 1 (нужен вход через Google). Создайте сервер, введите ID комнаты или выберите свободный сервер.</p>
+        <div class="lobbybar"><button class="btn" id="bRoom">Создать сервер</button><input id="roomId" placeholder="ID комнаты: room_abc123" autocomplete="off" aria-label="ID комнаты"><button class="btn" id="bJoin">Войти</button></div>
+        <p id="netMsg" class="mono"></p>
+        <h4>Свободные серверы</h4><div id="lobby"></div></article>
     </div>
   </section>
 

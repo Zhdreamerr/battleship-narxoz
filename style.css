@@ -93,3 +93,24 @@ input:focus{outline:none;border-color:var(--g)}
 .snd[aria-pressed="true"]{color:var(--g);border-color:var(--g)}
 @media (max-width:600px){.fields{grid-template-columns:1fr}.brand{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+/* Firebase: вход, рейтинг, отчёт тренера */
+[hidden]{display:none!important}
+.auth,.who{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 22px}
+.auth b,.who b{font-family:var(--mono);font-weight:500;color:var(--g)}
+.auth .err{font-size:12px}
+.ava{width:36px;height:36px;object-fit:cover;border:1px solid var(--g)}
+.tbl{overflow-x:auto;border:1px solid var(--grid2);background:var(--panel)}
+.rt{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:14px}
+.rt th,.rt td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--grid)}
+.rt th{color:var(--dim);font-weight:400;font-size:12px}
+.rt th:nth-child(n+3),.rt td:nth-child(n+3){text-align:right}
+.rt tbody tr:last-child td{border-bottom:0}
+.rt tbody tr:nth-child(-n+3) td:first-child{color:var(--g);font-weight:500}
+.rt tr.mine{background:rgba(57,255,106,.1)}
+.modal{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.8)}
+.mbox{width:100%;max-width:460px;background:var(--panel);border:1px solid var(--g);padding:22px;text-align:center;box-shadow:0 0 30px rgba(57,255,106,.15)}
+#cRes{margin:0 0 14px;color:var(--dim);font-size:13px}
+.acc b{display:block;font:500 56px/1.1 var(--mono);color:var(--g)}
+.acc span{font:12px var(--mono);color:var(--dim)}
+#cTip{margin:16px 0}
+#cSave{font-size:12px;margin:0 0 16px}

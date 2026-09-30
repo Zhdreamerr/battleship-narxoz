@@ -114,3 +114,8 @@ input:focus{outline:none;border-color:var(--g)}
 .acc span{font:12px var(--mono);color:var(--dim)}
 #cTip{margin:16px 0}
 #cSave{font-size:12px;margin:0 0 16px}
+/* сетевая атака */
+#netMsg{flex:0;margin:12px 0 0;font-size:12px;overflow-wrap:anywhere}
+#netMsg:empty{display:none}
+#netMsg.ok{color:var(--g)}#netMsg.err{color:var(--r)}
+#status{overflow-wrap:anywhere}

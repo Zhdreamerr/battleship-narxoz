@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Морской бой</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Морской бой</h1>
+  <p id="status"></p>
+  <div class="lvl" id="lvl"><span>Сложность компьютера</span><button class="btn" data-l="easy">Лёгкий</button><button class="btn" data-l="medium">Средний</button><button class="btn" data-l="hard">Сложный</button></div>
+  <div class="boards">
+    <section><h2>Мой флот</h2><div id="me"></div><div class="count" id="cme"></div></section>
+    <section><h2>Флот противника</h2><div id="cpu"></div><div class="count" id="ccpu"></div></section>
+  </div>
+  <div class="bar" id="bar">
+    <button class="btn" id="bMe">Автоматическая расстановка: мой флот</button>
+    <button class="btn" id="bCpu">Автоматическая расстановка: флот компьютера</button>
+    <button class="btn" id="bGo">Начать бой</button>
+    <button class="btn" id="bNew">Новая игра</button>
+  </div>
+  <div id="over"><p id="overTxt"></p><button class="btn" id="bNew2">Новая игра</button></div>
+</main>
+<script src="script.js"></script>
+</body>
+</html>

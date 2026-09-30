@@ -25,7 +25,7 @@
     <div class="cards">
       <article class="card"><h3>Локальный взлом</h3><p>Игра против бота: три уровня защиты, статистика и лог атак в реальном времени.</p><button class="btn" data-go="game">Начать атаку →</button></article>
       <article class="card off"><h3>Тренер уязвимостей</h3><p>Разбор ошибок и тактические подсказки.</p><span class="tag">СКОРО</span></article>
-      <article class="card off"><h3>Сетевая атака</h3><p class="mono">Ожидание соединения с сервером...</p><span class="tag">OFFLINE</span></article>
+      <article class="card"><h3>Сетевая атака</h3><p>Дуэль 1 на 1 по ссылке: создайте сервер и отправьте ссылку сопернику.</p><button class="btn" id="bRoom">Создать сервер</button><p id="netMsg" class="mono"></p></article>
     </div>
   </section>
 
@@ -43,6 +43,7 @@
       <button class="btn" id="bMe">Авторасстановка: моя сеть</button>
       <button class="btn" id="bCpu">Авторасстановка: цель</button>
       <button class="btn" id="bGo">Начать атаку</button>
+      <button class="btn" id="bReady" style="display:none">Готов</button>
       <button class="btn" id="bNew">Новая игра</button>
     </div>
     <div id="over"><p id="overTxt"></p><button class="btn" id="bRep">Отчет тренера</button> <button class="btn" id="bNew2">Новая игра</button></div>

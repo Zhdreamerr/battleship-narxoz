@@ -1,5 +1,6 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
 import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
+import {getDatabase,ref,set,onValue,update,remove} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-database.js";
 import {getFirestore,doc,getDoc,setDoc,increment,collection,query,orderBy,limit,getDocs} from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 const N=10,SIZES=[4,3,3,2,2,2,1,1,1,1],KEY='battleship_v1',L='АБВГДЕЖЗИК';
 const $=id=>document.getElementById(id);
@@ -26,7 +27,7 @@ function load(){
   }catch(e){}
   return null;
 }
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){try{if(S.net)sessionStorage.setItem(NKEY,JSON.stringify(S));else localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}   // онлайн-партия — в sessionStorage, локальная не затрагивается
 
 const around=i=>{const r=Math.floor(i/N),c=i%N,o=[];
   for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){const y=r+dr,x=c+dc;if(y>=0&&y<N&&x>=0&&x<N)o.push(y*N+x)}
@@ -65,6 +66,7 @@ function shoot(b,i){
 const word={miss:'мимо',hit:'попадание',sunk:'потоплен'};
 
 function playerShot(i){
+  if(S.net)return netShot(i);
   if(S.phase!=='battle'||S.turn!=='player'||S.cpu.shots[i])return;
   const res=shoot(S.cpu,i);
   S.last.p=name(i)+': '+word[res];S.last.c='';S.mark.p=i;
@@ -169,6 +171,8 @@ function render(){
   $('bNew').style.display=S.phase==='over'?'none':'';
   $('over').className=S.phase==='over'?'on':'';
   $('overTxt').textContent=S.winner==='player'?'ACCESS GRANTED. Флот противника уничтожен.':'ACCESS DENIED. Ваш флот уничтожен.';
+  if(S.net)netUI();
+  else{$('lvl').style.display='';$('bReady').style.display='none';$('bNew').textContent=$('bNew2').textContent='Новая игра'}
 }
 
 $('cpu').addEventListener('click',e=>{const b=e.target.closest('[data-i]');if(b)playerShot(+b.dataset.i)});
@@ -176,7 +180,7 @@ $('lvl').addEventListener('click',e=>{const b=e.target.closest('[data-l]');if(b&
 $('bMe').onclick=()=>{S.me=newBoard();S.me.ships=autoPlace();save();render()};
 $('bCpu').onclick=()=>{S.cpu=newBoard();S.cpu.ships=autoPlace();save();render()};
 $('bGo').onclick=()=>{S.phase='battle';S.turn='player';S.g={shots:0,hits:0};S.last={p:'',c:''};S.ai={hits:[]};S.mark={p:-1,c:-1};S.log=[];log('s','Сессия начата. Защита цели: '+LVN[S.level]);SoundManager.startBg();save();render()};
-const reset=()=>{clearTimeout(timer);timer=null;SoundManager.stopBg();S=fresh(S.level);save();render()};
+const reset=()=>{if(S.net)return leaveRoom();clearTimeout(timer);timer=null;SoundManager.stopBg();S=fresh(S.level);save();render()};
 $('bNew').onclick=reset;$('bNew2').onclick=reset;
 
 // ================= SPA, профиль, PRO (обёртка над движком) =================
@@ -201,7 +205,8 @@ const app=initializeApp({
   projectId:"narxoz-battleship",
   storageBucket:"narxoz-battleship.firebasestorage.app",
   messagingSenderId:"228640698225",
-  appId:"1:228640698225:web:0912fd6cdcac69857b10d0"
+  appId:"1:228640698225:web:0912fd6cdcac69857b10d0",
+  databaseURL:"https://narxoz-battleship-default-rtdb.firebaseio.com"   // скопируйте точный URL из консоли Firebase → Realtime Database
 });
 const auth=getAuth(app),db=getFirestore(app);
 let user=null,P=null,saveMsg='';
@@ -370,6 +375,136 @@ document.addEventListener('keydown',e=>{
   if(S.phase==='setup'&&!$('v-game').hidden&&/^(r|к)$/i.test(e.key)&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){S.pl.h=!S.pl.h;save();render()}
 });
 
+// ================= Сетевая атака 1 на 1 (Realtime Database) =================
+// Корабли знает только владелец: стрелок пишет shot, защищающийся считает результат по своей сетке и пишет res (+turn при промахе).
+// Локальная игра не затрагивается: на время онлайн-режима S подменяется, LS хранит локальную партию.
+const RID=new URLSearchParams(location.search).get('room'),RID_RE=/^room_[a-z0-9]{3,12}$/i,NKEY='battleship_net_v1';
+let LS=null,unsub=null,rdb=null;
+const room=id=>{rdb=rdb||getDatabase(app);return ref(rdb,'rooms/'+id)};
+const other=r=>r==='player1'?'player2':'player1';
+const roomLink=id=>location.origin+location.pathname+'?room='+id;
+const rtok=()=>Math.random().toString(36).slice(2);
+const netMsg=(m,bad)=>{const e=$('netMsg');e.textContent=m||'';e.className='mono '+(bad?'err':'ok')};
+const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r({code:'нет ответа от Realtime Database — проверьте databaseURL и правила'}),8000))]);
+function netState(id,role,tok){const s=fresh();s.net={id,role,tok,applied:0,def:0,pend:false,opp:''};s.turn='opp';return s}
+
+function enterNet(ns){
+  if(!S.net)LS=S;
+  clearTimeout(timer);timer=null;SoundManager.stopBg();
+  S=ns;go('game');render();
+}
+function listen(ns){
+  if(unsub)unsub();
+  enterNet(ns);
+  unsub=onValue(room(ns.net.id),s=>onRoom(s.val()),e=>quitNet('Ошибка соединения: '+(e.code||e.message)));
+}
+function quitNet(msg){
+  if(unsub){unsub();unsub=null}
+  try{sessionStorage.removeItem(NKEY)}catch(e){}
+  if(S.net&&LS){S=LS;LS=null}
+  if(location.search)history.replaceState(null,'',location.pathname+'#home');
+  netMsg(msg,1);go('home');render();schedule();
+}
+async function createRoom(){
+  if(S.net)leaveRoom();
+  const id='room_'+Math.random().toString(36).slice(2,8),tok=rtok(),link=roomLink(id);
+  const cp=navigator.clipboard?navigator.clipboard.writeText(link).then(()=>1,()=>0):Promise.resolve(0);
+  netMsg('Создаём сервер…');
+  try{await tmo(set(room(id),{status:'waiting',p1:{name:myName(),tok},created:Date.now()}))}
+  catch(e){return netMsg('Ошибка создания сервера: '+(e.code||e.message),1)}
+  netMsg(((await cp)?'Ссылка скопирована: ':'Ссылка на игру: ')+link);
+  listen(netState(id,'player1',tok));
+}
+function joinRoom(id){
+  if(!RID_RE.test(id))return netMsg('Неверная ссылка на комнату.',1);
+  try{
+    let sv=null;try{sv=JSON.parse(sessionStorage.getItem(NKEY))}catch(e){}
+    if(sv&&sv.net&&sv.net.id===id&&sv.me&&sv.cpu)return listen(sv);   // перезагрузка страницы — возвращаемся в свою комнату
+    const tok=rtok();go('home');netMsg('Подключение к комнате…');
+    onValue(room(id),snap=>{
+      const d=snap.val();
+      if(!d)return quitNet('Комната не найдена или уже закрыта.');
+      if(d.p2)return quitNet('В комнате уже есть второй игрок.');
+      update(room(id),{p2:{name:myName(),tok},status:'setup'}).catch(console.error);
+      listen(netState(id,'player2',tok));
+    },{onlyOnce:true});
+  }catch(e){quitNet('Ошибка подключения: '+e.message)}
+}
+function leaveRoom(){
+  const n=S.net;if(!n)return;
+  if(S.phase==='battle')update(room(n.id),{status:'over',winner:other(n.role),left:true}).catch(()=>{});   // выход в бою = поражение
+  else remove(room(n.id)).catch(()=>{});
+  quitNet('');
+}
+
+function onRoom(d){
+  const n=S.net;if(!n)return;
+  if(!d){if(S.phase!=='over')quitNet('Комната закрыта.');return}
+  const me=n.role,op=other(me),o=d[me==='player1'?'p2':'p1'];
+  if(me==='player2'&&d.p2&&d.p2.tok!==n.tok)return quitNet('В комнате уже есть второй игрок.');
+  n.opp=o?o.name:'';
+  if(d.status==='battle'&&(S.phase==='setup'||S.phase==='wait')){   // оба готовы — бой
+    S.phase='battle';S.g={shots:0,hits:0};S.log=[];S.last={p:'',c:''};S.mark={p:-1,c:-1};
+    log('s','Сессия начата. Соперник: '+n.opp);SoundManager.startBg();
+  }
+  if(d.shot&&d.shot.by===op&&d.status==='battle'&&n.def!==d.shot.n&&(!d.res||d.res.n!==d.shot.n)){n.def=d.shot.n;defend(d.shot)}
+  if(d.res&&d.res.by===me&&d.res.n>n.applied)applyRes(d.res);
+  if(me==='player1'&&d.status==='setup'&&d.ready&&d.ready.player1&&d.ready.player2)
+    update(room(n.id),{status:'battle',turn:Math.random()<.5?'player1':'player2'}).catch(console.error);
+  if(S.phase==='battle')S.turn=d.turn===me&&!n.pend?'player':'opp';
+  if(d.status==='over'&&S.phase!=='over'){
+    S.phase='over';S.winner=d.winner===me?'player':'opp';
+    if(d.left&&S.winner==='player')log('s','Соперник покинул комнату');
+    finish(S.winner==='player'?'player':'cpu');
+  }
+  save();render();fx=null;
+}
+// Соперник выстрелил по мне: считаем результат, пишем res; ход переходит ко мне только при промахе
+function defend(sh){
+  const n=S.net,i=sh.i,r=shoot(S.me,i),ship=r==='sunk'?shipOf(S.me,i):null;
+  S.mark.c=i;S.last.c=name(i)+': '+word[r];S.last.p='';
+  log('c','< '+name(i)+' … '+LOGW[r],r);SoundManager.shot(r);fx='me';
+  const out={res:{n:sh.n,by:sh.by,i,r,cells:ship?ship.cells:null}};
+  if(alive(S.me)===0){out.status='over';out.winner=sh.by;S.phase='over';S.winner='opp';finish('cpu')}
+  else if(r==='miss')out.turn=n.role;
+  update(room(n.id),out).catch(console.error);
+}
+// Результат моего выстрела: отражаем его на поле соперника
+function applyRes(x){
+  const n=S.net,b=S.cpu,i=x.i,c=x.cells||[i];
+  n.applied=x.n;n.pend=false;b.shots[i]=1;
+  if(x.r!=='miss')b.ships.push({cells:[i,-1]});   // пока размер корабля неизвестен (-1 = «неоткрытая» клетка)
+  if(x.r==='sunk'){b.ships=b.ships.filter(s=>!s.cells.some(k=>c.includes(k)));b.ships.push({cells:c});c.forEach(k=>around(k).forEach(j=>b.shots[j]=1))}
+  S.mark.p=i;S.last.p=name(i)+': '+word[x.r];S.last.c='';
+  log('p','> '+name(i)+' … '+LOGW[x.r],x.r);stat(x.r);SoundManager.shot(x.r);fx='cpu';
+}
+function netShot(i){
+  const n=S.net;
+  if(S.phase!=='battle'||S.turn!=='player'||n.pend||S.cpu.shots[i])return;
+  n.pend=true;S.turn='opp';save();render();
+  update(room(n.id),{shot:{by:n.role,i,n:Date.now()}}).catch(e=>{console.error(e);n.pend=false;S.turn='player';render()});
+}
+function netUI(){
+  const n=S.net,ph=S.phase,prep=ph==='setup'||ph==='wait',sunk=S.cpu.ships.filter(s=>isSunk(S.cpu,s)).length;
+  let st;
+  if(prep)st=(n.opp?'<b>Ожидание расстановки флота.</b> Соперник: '+esc(n.opp)+'. ':'<b>Ожидание соперника.</b> Ссылка для приглашения: '+esc(roomLink(n.id))+' ')+
+    (ph==='wait'?'Вы готовы — ждём соперника…':'Расставьте корабли и нажмите «Готов».');
+  else if(ph==='battle')st=S.turn==='player'?'<b>Ваш ход.</b> Выберите клетку на поле противника.':'<b>'+(n.pend?'Ожидание результата…':'Ход соперника…')+'</b>';
+  else st='<b>Бой окончен.</b>';
+  if(S.last.p||S.last.c)st+='<br>'+(S.last.p?'Вы — '+S.last.p:'')+(S.last.p&&S.last.c?'. ':'')+(S.last.c?'Соперник — '+S.last.c:'');
+  $('status').innerHTML=st;
+  $('ccpu').textContent=prep?'Флот соперника скрыт':'Потоплено кораблей: '+sunk+' из 10';
+  $('lvl').style.display=$('bCpu').style.display=$('bGo').style.display='none';
+  $('bReady').style.display=ph==='setup'?'':'none';$('bReady').disabled=S.me.ships.length!==SIZES.length;
+  $('bNew').textContent=$('bNew2').textContent='Покинуть комнату';
+}
+$('bRoom').onclick=createRoom;
+$('bReady').onclick=()=>{
+  const n=S.net;if(!n||S.phase!=='setup'||S.me.ships.length!==SIZES.length)return;
+  S.phase='wait';save();render();   // фаза «wait»: расстановка заблокирована
+  update(room(n.id),{['ready/'+n.role]:true}).catch(e=>{console.error(e);S.phase='setup';render()});
+};
+
 // ================= Звук =================
 const SoundManager={
   on:(()=>{try{return localStorage.getItem('battleship_sound')!=='off'}catch(e){return true}})(),
@@ -408,3 +543,4 @@ document.addEventListener('pointerdown',()=>{if(S.phase==='battle'&&!SoundManage
 
 render();schedule();   // после перезагрузки страницы партия и ход компьютера продолжаются
 go(location.hash.slice(1));   // открыть вкладку из адресной строки
+if(RID)joinRoom(RID);   // ссылка ?room=… — подключаемся как player2
